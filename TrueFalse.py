@@ -83,6 +83,170 @@ def find_configurator_window():
     return windows
 
 
+def change_password_for_user(user_type, current_password, new_password):
+    """
+    Меняет пароль для конкретного типа пользователя
+    """
+    print(f"\n🔐 Смена пароля для: {user_type}")
+
+    # Ищем окно смены паролей
+    password_windows = []
+
+    def find_password_window(hwnd, extra):
+        if win32gui.IsWindowVisible(hwnd):
+            title = win32gui.GetWindowText(hwnd)
+            if "парол" in title.lower() or "password" in title.lower():
+                password_windows.append((hwnd, title))
+        return True
+
+    win32gui.EnumWindows(find_password_window, None)
+
+    if not password_windows:
+        print("❌ Не найдено окно смены паролей")
+        return False
+
+    hwnd_popup, title_popup = password_windows[0]
+    print(f"📋 Работаем с окном: '{title_popup}'")
+
+    # Активируем окно
+    ensure_window_visible(window_title=title_popup, maximize=False)
+    time.sleep(1)
+
+    try:
+        # Подключаемся к окну смены паролей
+        app_popup = Application(backend='uia').connect(handle=hwnd_popup)
+        window_popup = app_popup.window(handle=hwnd_popup)
+
+        # ШАГ 1: Выбираем тип пользователя из выпадающего списка
+        print(f"1. 👤 Выбор пользователя: {user_type}")
+
+        # Ищем комбобокс или кнопку выбора пользователя
+        comboboxes = window_popup.descendants(control_type="ComboBox")
+        buttons = window_popup.descendants(control_type="Button")
+
+        print(f"Найдено ComboBox: {len(comboboxes)}")
+        print(f"Найдено Button: {len(buttons)}")
+
+        # Ищем элемент для выбора типа пользователя
+        user_selector = None
+        for elem in window_popup.descendants():
+            elem_info = elem.element_info
+            if (elem_info.control_type in ["ComboBox", "Button"] and
+                    elem_info.name and any(
+                        word in elem_info.name.lower() for word in ["пользователь", "user", "тип", "role"])):
+                user_selector = elem
+                break
+
+        if not user_selector:
+            # Если не нашли по названию, берем первый комбобокс или подходящую кнопку
+            if comboboxes:
+                user_selector = comboboxes[0]
+            elif len(buttons) > 3:  # Предполагаем, что кнопка выбора не среди основных
+                user_selector = buttons[0]  # Первая кнопка может быть для выбора
+
+        if user_selector:
+            rect = user_selector.rectangle()
+            center_x = (rect.left + rect.right) // 2
+            center_y = (rect.top + rect.bottom) // 2
+
+            print(f"Координаты выбора пользователя: ({center_x}, {center_y})")
+
+            # Кликаем для открытия списка
+            pyautogui.click(center_x, center_y)
+            time.sleep(1)
+
+            # Выбираем нужного пользователя из списка
+            # Позиции могут быть разными, нужно подобрать
+            user_positions = {
+                "оператор": (center_x, center_y + 30),
+                "наладчик": (center_x, center_y + 60),
+                "поверитель": (center_x, center_y + 90)
+            }
+
+            if user_type.lower() in user_positions:
+                target_x, target_y = user_positions[user_type.lower()]
+                pyautogui.click(target_x, target_y)
+                print(f"✅ Выбран пользователь: {user_type}")
+                time.sleep(1)
+            else:
+                print(f"❌ Неизвестный тип пользователя: {user_type}")
+                return False
+        else:
+            print("❌ Не найден элемент выбора пользователя")
+            return False
+
+        # ШАГ 2: Вводим пароли в три поля
+        print("2. ⌨️ Ввод паролей...")
+
+        # Ищем поля ввода
+        edit_fields = window_popup.descendants(control_type="Edit")
+        print(f"Найдено полей ввода: {len(edit_fields)}")
+
+        if len(edit_fields) >= 3:
+            passwords = [current_password, new_password, new_password]
+            field_labels = ["текущий пароль", "новый пароль", "подтверждение"]
+
+            for i, field in enumerate(edit_fields[:3]):  # Берем первые три поля
+                rect = field.rectangle()
+                center_x = (rect.left + rect.right) // 2
+                center_y = (rect.top + rect.bottom) // 2
+
+                print(f"  Поле {i + 1} ({field_labels[i]}): ({center_x}, {center_y})")
+
+                # Кликаем в поле
+                pyautogui.click(center_x, center_y)
+                time.sleep(0.3)
+
+                # Очищаем поле
+                pyautogui.hotkey('ctrl', 'a')
+                time.sleep(0.1)
+                pyautogui.press('delete')
+                time.sleep(0.1)
+
+                # Вводим пароль
+                pyautogui.write(passwords[i], interval=0.05)
+                print(f"    Введен: {passwords[i]}")
+                time.sleep(0.3)
+        else:
+            print("❌ Не найдено три поля для ввода паролей")
+            return False
+
+        # ШАГ 3: Нажимаем кнопку подтверждения
+        print("3. ✅ Подтверждение смены пароля...")
+
+        # Ищем кнопки OK, Применить, Сохранить и т.д.
+        confirm_button = None
+        for button in buttons:
+            button_name = button.element_info.name.lower()
+            if any(word in button_name for word in ["ок", "ok", "применить", "apply", "сохранить", "save"]):
+                confirm_button = button
+                break
+
+        if not confirm_button and buttons:
+            # Берем последнюю кнопку (обычно это OK)
+            confirm_button = buttons[-1]
+
+        if confirm_button:
+            rect = confirm_button.rectangle()
+            center_x = (rect.left + rect.right) // 2
+            center_y = (rect.top + rect.bottom) // 2
+
+            print(f"Координаты кнопки подтверждения: ({center_x}, {center_y})")
+
+            pyautogui.click(center_x, center_y)
+            print("✅ Пароль изменен")
+            time.sleep(2)
+        else:
+            print("❌ Не найдена кнопка подтверждения")
+            return False
+
+        return True
+
+    except Exception as e:
+        print(f"❌ Ошибка при смене пароля: {e}")
+        return False
+
+
 def change_passwords_sequence():
     """
     Основная последовательность для смены паролей
@@ -112,26 +276,23 @@ def change_passwords_sequence():
 
         print("🔍 Поиск элементов интерфейса...")
 
-        # ШАГ 1: Нажимаем кнопку остановки процессов (элемент Image под индексом 6)
+        # ШАГ 1: Нажимаем кнопку остановки процессов
         print("\n1. 🔴 Нажатие кнопки остановки процессов...")
 
-        # Ищем все элементы типа Image (как в предыдущем коде)
         images = window.descendants(control_type="Image")
         print(f"Найдено элементов Image: {len(images)}")
 
-        if len(images) < 7:  # Нужно минимум 7 элементов (индекс 6)
+        if len(images) < 7:
             print(f"❌ Недостаточно элементов Image (нужно минимум 7, найдено {len(images)})")
             return False
 
-        # Берем кнопку остановки под индексом 6
-        stop_button = images[6]  # Индекс 6
+        stop_button = images[6]
         rect = stop_button.rectangle()
         center_x = (rect.left + rect.right) // 2
         center_y = (rect.top + rect.bottom) // 2
 
         print(f"Координаты кнопки остановки: ({center_x}, {center_y})")
 
-        # Наводим курсор и кликаем
         pyautogui.moveTo(center_x, center_y)
         time.sleep(1)
         pyautogui.click(center_x, center_y)
@@ -139,39 +300,33 @@ def change_passwords_sequence():
         print("✅ Кнопка остановки процессов нажата")
         time.sleep(2)
 
-        # ШАГ 2: Нажимаем на меню "Пароли" и выбираем MenuItem под индексом 3
-        print("\n2. 📋 Нажатие на меню 'Пароли'...")
+        # ШАГ 2: Открываем меню смены паролей
+        print("\n2. 📋 Открытие меню смены паролей...")
 
-        # Ищем меню "Пароли" (элемент 13 из отладки)
         try:
-            passwords_menu = window.descendants()[13]  # Меню "Пароли"
+            passwords_menu = window.descendants()[13]
             rect = passwords_menu.rectangle()
             center_x = (rect.left + rect.right) // 2
             center_y = (rect.top + rect.bottom) // 2
 
             print(f"Координаты меню 'Пароли': ({center_x}, {center_y})")
 
-            # Кликаем по меню "Пароли"
             pyautogui.click(center_x, center_y)
             print("✅ Меню 'Пароли' открыто")
             time.sleep(1)
 
-            # После клика на "Пароли" ищем MenuItem с индексом 3
-            time.sleep(1)
-
-            # Ищем все MenuItem в выпадающем меню
+            # Ищем MenuItem с индексом 3
             menu_items = []
             for elem in window.descendants():
                 if (elem.element_info.control_type == "MenuItem" and
                         elem.element_info.name and
-                        elem.rectangle().top > rect.bottom):  # Только те, что ниже основного меню
+                        elem.rectangle().top > rect.bottom):
                     menu_items.append(elem)
 
             print(f"Найдено MenuItem в выпадающем меню: {len(menu_items)}")
 
             if len(menu_items) >= 3:
-                # Берем MenuItem под индексом 3 (индекс 2 в списке)
-                target_menu_item = menu_items[2]  # Индекс 2 для третьего элемента
+                target_menu_item = menu_items[2]
                 rect_item = target_menu_item.rectangle()
                 center_x_item = (rect_item.left + rect_item.right) // 2
                 center_y_item = (rect_item.top + rect_item.bottom) // 2
@@ -190,64 +345,25 @@ def change_passwords_sequence():
             print(f"❌ Ошибка при работе с меню: {e}")
             return False
 
-        # ШАГ 3: Нажимаем первую кнопку во всплывшем окне
-        print("\n3. 🎯 Нажатие первой кнопки во всплывшем окне...")
+        # ШАГ 3: Меняем пароли для всех трех типов пользователей
+        print("\n3. 🔐 Последовательная смена паролей для всех пользователей")
 
-        # Ждем появления всплывающего окна
-        time.sleep(3)
+        # Пароли для смены (текущий_пароль, новый_пароль)
+        password_changes = [
+            ("оператор", "1234", "5678"),
+            ("наладчик", "5678", "3456"),
+            ("поверитель", "3456", "1234")
+        ]
 
-        # Ищем все окна чтобы найти всплывающее
-        all_windows = []
-
-        def find_popup_window(hwnd, extra):
-            if win32gui.IsWindowVisible(hwnd) and hwnd != window.handle:
-                title = win32gui.GetWindowText(hwnd)
-                if title and title != "":  # Окно с непустым заголовком
-                    all_windows.append((hwnd, title))
-            return True
-
-        win32gui.EnumWindows(find_popup_window, None)
-
-        if all_windows:
-            print("📋 Найдены всплывающие окна:")
-            for hwnd_popup, title_popup in all_windows:
-                print(f"  - '{title_popup}'")
-
-            # Берем первое всплывающее окно
-            hwnd_popup, title_popup = all_windows[0]
-            print(f"Работаем с окном: '{title_popup}'")
-
-            # Активируем всплывающее окно
-            ensure_window_visible(window_title=title_popup, maximize=False)
-            time.sleep(1)
-
-            # Подключаемся к всплывающему окну
-            app_popup = Application(backend='uia').connect(handle=hwnd_popup)
-            window_popup = app_popup.window(handle=hwnd_popup)
-
-            # Ищем все кнопки во всплывающем окне
-            popup_buttons = window_popup.descendants(control_type="Button")
-            print(f"Найдено кнопок во всплывающем окне: {len(popup_buttons)}")
-
-            if len(popup_buttons) > 0:
-                # Нажимаем первую кнопку
-                first_button = popup_buttons[0]
-                rect = first_button.rectangle()
-                center_x = (rect.left + rect.right) // 2
-                center_y = (rect.top + rect.bottom) // 2
-
-                print(f"Координаты первой кнопки: ({center_x}, {center_y})")
-
-                pyautogui.click(center_x, center_y)
-                print("✅ Первая кнопка всплывающего окна нажата")
-                time.sleep(2)
-
+        for user_type, current_pass, new_pass in password_changes:
+            success = change_password_for_user(user_type, current_pass, new_pass)
+            if not success:
+                print(f"❌ Не удалось сменить пароль для {user_type}")
+                # Продолжаем с другими пользователями
             else:
-                print("❌ Не найдены кнопки во всплывающем окне")
-                return False
-        else:
-            print("❌ Не найдено всплывающее окно")
-            return False
+                print(f"✅ Пароль для {user_type} успешно изменен")
+
+            time.sleep(1)
 
         print("\n🎉 ПРОЦЕДУРА СМЕНЫ ПАРОЛЕЙ УСПЕШНО ЗАВЕРШЕНА!")
         return True
