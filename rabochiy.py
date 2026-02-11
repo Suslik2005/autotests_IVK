@@ -4,7 +4,7 @@ import win32gui
 import time
 
 from pywinauto import Application
-
+import os
 
 
 class PasswordChanger:
@@ -23,7 +23,7 @@ class PasswordChanger:
             return False
 
     def ensure_window_visible(self, window_title=None, window_class=None, maximize=True):
-        print(f"=== ПРОВЕРКА ВИДИМОСТИ ОКНА ===")
+        print(f"ПРОВЕРКА ВИДИМОСТИ ОКНА")
 
         try:
             if window_title:
@@ -306,6 +306,15 @@ class PasswordChanger:
             print("\n3. 👥 Последовательная смена паролей для пользователей")
 
             array = []
+            if not os.path.exists("passwords.txt"):
+                with open("passwords.txt", "w", encoding='utf-8') as f:
+                    f.write("1234\n")
+                    f.write("5678\n")
+                    f.write("3456\n")
+                    f.write("1\n")
+                print("Создан файл passwords.txt с дефолтными значениями")
+            else:
+                print("✅ Файл passwords.txt найден")
             with open("passwords.txt", 'r', encoding='utf-8') as f:
                 for i in range(4):
                     line = f.readline()
