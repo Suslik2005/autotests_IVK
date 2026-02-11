@@ -4,12 +4,7 @@ import win32gui
 import time
 
 from pywinauto import Application
-import sys
-from PySide6.QtWidgets import QApplication, QWidget, QVBoxLayout, QPushButton
 
-import sys
-import os
-from PySide6.QtWidgets import QApplication, QWidget, QVBoxLayout, QPushButton
 
 
 class PasswordChanger:
